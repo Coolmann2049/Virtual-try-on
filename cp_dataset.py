@@ -1,4 +1,3 @@
-# coding=utf-8
 import torch
 import torch.utils.data as data
 import torchvision.transforms as transforms
@@ -73,23 +72,23 @@ class CPDataset(data.Dataset):
          (128, 0, 0),  # 1=Hat
          (255, 0, 0),  # 2=Hair
          (0, 85, 0),   # 3=Glove
-         (170, 0, 51),  # 4=SunGlasses
-         (255, 85, 0),  # 5=UpperClothes
+         (170, 0, 51), # 4=SunGlasses
+         (255, 85, 0), # 5=UpperClothes
          (0, 0, 85),     # 6=Dress
-         (0, 119, 221),  # 7=Coat
+         (0, 119, 221), # 7=Coat
          (85, 85, 0),    # 8=Socks
          (0, 85, 85),    # 9=Pants
          (85, 51, 0),    # 10=Jumpsuits
-         (52, 86, 128),  # 11=Scarf
+         (52, 86, 128), # 11=Scarf
          (0, 128, 0),    # 12=Skirt
          (0, 0, 255),    # 13=Face
-         (51, 170, 221),  # 14=LeftArm
-         (0, 255, 255),   # 15=RightArm
-         (85, 255, 170),  # 16=LeftLeg
-         (170, 255, 85),  # 17=RightLeg
+         (51, 170, 221), # 14=LeftArm
+         (0, 255, 255),  # 15=RightArm
+         (85, 255, 170), # 16=LeftLeg
+         (170, 255, 85), # 17=RightLeg
          (255, 255, 0),   # 18=LeftShoe
          (255, 170, 0)    # 19=RightShoe
-         (170, 170, 50)   # 20=Skin/Neck/Chest (Newly added after running dataset_neck_skin_correction.py)
+         (170, 170, 50)    # 20=Skin/Neck/Chest (Newly added after running dataset_neck_skin_correction.py)
          ]
          """
 
@@ -97,7 +96,7 @@ class CPDataset(data.Dataset):
         parse_name = im_name.replace('.jpg', '.png')
         im_parse = Image.open(
             # osp.join(self.data_path, 'image-parse', parse_name)).convert('L')
-            osp.join(self.data_path, 'image-parse-new', parse_name)).convert('L')   # updated new segmentation
+            osp.join(self.data_path, 'image-parse-new', parse_name)).convert('L')    # updated new segmentation
         parse_array = np.array(im_parse)
         im_mask = Image.open(
             osp.join(self.data_path, 'image-mask', parse_name)).convert('L')
@@ -135,8 +134,11 @@ class CPDataset(data.Dataset):
             (self.fine_width, self.fine_height), Image.BILINEAR)
         parse_shape_ori = parse_shape_ori.resize(
             (self.fine_width, self.fine_height), Image.BILINEAR)
-        shape_ori = self.transform(parse_shape_ori)  # [-1,1]
-        shape = self.transform(parse_shape)  # [-1,1]
+        
+        # FIX: Convert these 1-channel PIL images to 'RGB' before passing to transform
+        # This will replicate the single channel into three channels.
+        shape_ori = self.transform(parse_shape_ori.convert('RGB'))  # [-1,1]
+        shape = self.transform(parse_shape.convert('RGB'))  # [-1,1]
         phead = torch.from_numpy(parse_head)  # [0,1]
         # phand = torch.from_numpy(parse_hand)  # [0,1]
         pcm = torch.from_numpy(parse_cloth)  # [0,1]
@@ -165,14 +167,14 @@ class CPDataset(data.Dataset):
             pointy = pose_data[i, 1]
             if pointx > 1 and pointy > 1:
                 draw.rectangle((pointx-r, pointy-r, pointx +
-                                r, pointy+r), 'white', 'white')
+                                     r, pointy+r), 'white', 'white')
                 pose_draw.rectangle(
                     (pointx-r, pointy-r, pointx+r, pointy+r), 'white', 'white')
             one_map = self.transform(one_map)
             pose_map[i] = one_map[0]
 
-        # just for visualization
-        im_pose = self.transform(im_pose)
+        # FIX: Convert im_pose to 'RGB' before passing to transform
+        im_pose = self.transform(im_pose.convert('RGB')) # [-1,1]
 
         # cloth-agnostic representation
         agnostic = torch.cat([shape, im_h, pose_map], 0)
@@ -186,19 +188,19 @@ class CPDataset(data.Dataset):
         pcm.unsqueeze_(0)  # CP-VTON+
 
         result = {
-            'c_name':   c_name,     # for visualization
-            'im_name':  im_name,    # for visualization or ground truth
-            'cloth':    c,          # for input
-            'cloth_mask':     cm,   # for input
-            'image':    im,         # for visualization
-            'agnostic': agnostic,   # for input
-            'parse_cloth': im_c,    # for ground truth
-            'shape': shape,         # for visualization
-            'head': im_h,           # for visualization
-            'pose_image': im_pose,  # for visualization
-            'grid_image': im_g,     # for visualization
-            'parse_cloth_mask': pcm,     # for CP-VTON+, TOM input
-            'shape_ori': shape_ori,     # original body shape without resize
+            'c_name':    c_name,     # for visualization
+            'im_name':   im_name,    # for visualization or ground truth
+            'cloth':     c,          # for input
+            'cloth_mask':      cm,   # for input
+            'image':     im,         # for visualization
+            'agnostic': agnostic,    # for input
+            'parse_cloth': im_c,     # for ground truth
+            'shape': shape,          # for visualization
+            'head': im_h,            # for visualization
+            'pose_image': im_pose,   # for visualization
+            'grid_image': im_g,      # for visualization
+            'parse_cloth_mask': pcm,      # for CP-VTON+, TOM input
+            'shape_ori': shape_ori,       # original body shape without resize
         }
 
         return result
@@ -246,7 +248,7 @@ if __name__ == "__main__":
     parser.add_argument("--fine_height", type=int, default=256)
     parser.add_argument("--radius", type=int, default=3)
     parser.add_argument("--shuffle", action='store_true',
-                        help='shuffle input data')
+                         help='shuffle input data')
     parser.add_argument('-b', '--batch-size', type=int, default=4)
     parser.add_argument('-j', '--workers', type=int, default=1)
 
