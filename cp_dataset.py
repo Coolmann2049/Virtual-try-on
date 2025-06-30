@@ -55,6 +55,11 @@ class CPDataset(data.Dataset):
             c = Image.open(osp.join(self.data_path, 'warp-cloth', im_name))    # c_name, if that is used when saved
             cm = Image.open(osp.join(self.data_path, 'warp-mask', im_name)).convert('L')    # c_name, if that is used when saved
 
+        # --- NEW/FIXED: Resize cloth and cloth mask to match fine_width/height ---
+        c = c.resize((self.fine_width, self.fine_height), Image.BILINEAR)
+        cm = cm.resize((self.fine_width, self.fine_height), Image.BILINEAR)
+        # ----------------------------------------------------------------------
+
         c = self.transform(c)  # [-1,1]
         cm_array = np.array(cm)
         cm_array = (cm_array >= 128).astype(np.float32)
@@ -63,6 +68,9 @@ class CPDataset(data.Dataset):
 
         # person image
         im = Image.open(osp.join(self.data_path, 'image', im_name))
+        # --- NEW/FIXED: Resize person image to match fine_width/height ---
+        im = im.resize((self.fine_width, self.fine_height), Image.BILINEAR)
+        # ---------------------------------------------------------------
         im = self.transform(im)  # [-1,1]
 
         """
@@ -96,7 +104,7 @@ class CPDataset(data.Dataset):
         parse_name = im_name.replace('.jpg', '.png')
         im_parse = Image.open(
             # osp.join(self.data_path, 'image-parse', parse_name)).convert('L')
-            osp.join(self.data_path, 'image-parse-new', parse_name)).convert('L') # updated new segmentation
+            osp.join(self.data_path, 'image-parse-new', parse_name)).convert('L')    # updated new segmentation
         im_parse = im_parse.resize((self.fine_width, self.fine_height), Image.BILINEAR) 
         parse_array = np.array(im_parse)
         im_mask = Image.open(
