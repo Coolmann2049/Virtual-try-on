@@ -96,10 +96,12 @@ class CPDataset(data.Dataset):
         parse_name = im_name.replace('.jpg', '.png')
         im_parse = Image.open(
             # osp.join(self.data_path, 'image-parse', parse_name)).convert('L')
-            osp.join(self.data_path, 'image-parse-new', parse_name)).convert('L')    # updated new segmentation
+            osp.join(self.data_path, 'image-parse-new', parse_name)).convert('L') # updated new segmentation
+        im_parse = im_parse.resize((self.fine_width, self.fine_height), Image.BILINEAR) 
         parse_array = np.array(im_parse)
         im_mask = Image.open(
             osp.join(self.data_path, 'image-mask', parse_name)).convert('L')
+        im_mask = im_mask.resize((self.fine_width, self.fine_height), Image.BILINEAR) 
         mask_array = np.array(im_mask)
 
         # parse_shape = (parse_array > 0).astype(np.float32)  # CP-VTON body shape
