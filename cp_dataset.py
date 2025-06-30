@@ -170,7 +170,7 @@ class CPDataset(data.Dataset):
                                      r, pointy+r), 'white', 'white')
                 pose_draw.rectangle(
                     (pointx-r, pointy-r, pointx+r, pointy+r), 'white', 'white')
-            one_map = self.transform(one_map)
+            one_map = self.transform(one_map.convert('RGB'))
             pose_map[i] = one_map[0]
 
         # FIX: Convert im_pose to 'RGB' before passing to transform
