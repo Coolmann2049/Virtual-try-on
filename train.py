@@ -173,10 +173,6 @@ def train_tom(opt, train_loader, model, board):
         m_composite = F.sigmoid(m_composite)
         p_tryon = c * m_composite + p_rendered * (1 - m_composite)
 
-        """visuals = [[im_h, shape, im_pose],
-                   [c, cm*2-1, m_composite*2-1],
-                   [p_rendered, p_tryon, im]]"""  # CP-VTON
-
         visuals = [[im_h, shape, im_pose],
                    [original_c, c, m_composite*2-1], # Use original_c and warped c for visuals
                    [p_rendered, p_tryon, im]]  # CP-VTON+
@@ -232,8 +228,10 @@ def main():
             opt.checkpoint_dir, opt.name, 'gmm_final.pth'))
     elif opt.stage == 'TOM':
         # model = UnetGenerator(25, 4, 6, ngf=64, norm_layer=nn.InstanceNorm2d)  # CP-VTON
+        # --- FIXED: Changed input_nc from 26 to 35 ---
         model = UnetGenerator(
-            26, 4, 6, ngf=64, norm_layer=nn.InstanceNorm2d)  # CP-VTON+
+            35, 4, 6, ngf=64, norm_layer=nn.InstanceNorm2d)  # CP-VTON+
+        # --- END FIXED ---
         if not opt.checkpoint == '' and os.path.exists(opt.checkpoint):
             load_checkpoint(model, opt.checkpoint)
         train_tom(opt, train_loader, model, board)
