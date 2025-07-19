@@ -162,7 +162,7 @@ def train_tom(opt, train_loader, model, board):
             grid, _ = gmm_model(agnostic, original_cm) # Use GMM to get warping grid
         
         # Apply warping to original cloth and mask on-the-fly
-        Có = F.grid_sample(original_c, grid, padding_mode='border') # This is now the warped_cloth
+        c = F.grid_sample(original_c, grid, padding_mode='border') # This is now the warped_cloth
         cm = F.grid_sample(original_cm, grid, padding_mode='zeros') # This is now the warped_mask
         # --- END MODIFIED ---
 
