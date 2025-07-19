@@ -25,13 +25,11 @@ def get_opt():
 
     parser.add_argument("--dataroot", default="data")
 
-    # parser.add_argument("--datamode", default="train")
     parser.add_argument("--datamode", default="test")
 
     parser.add_argument("--stage", default="GMM")
     # parser.add_argument("--stage", default="TOM")
 
-    # parser.add_argument("--data_list", default="train_pairs.txt")
     parser.add_argument("--data_list", default="test_pairs.txt")
     # parser.add_argument("--data_list", default="test_pairs_same.txt")
 
@@ -107,8 +105,6 @@ def test_gmm(opt, test_loader, model, board):
                    [c, warped_cloth, im_c],
                    [warped_grid, (warped_cloth+im)*0.5, im]]
 
-        # save_images(warped_cloth, c_names, warp_cloth_dir)
-        # save_images(warped_mask*2-1, c_names, warp_mask_dir)
         save_images(warped_cloth, im_names, warp_cloth_dir)
         save_images(warped_mask * 2 - 1, im_names, warp_mask_dir)
         save_images(shape_ori.cuda() * 0.2 + warped_cloth *
@@ -127,7 +123,6 @@ def test_tom(opt, test_loader, model, board):
     model.eval()
 
     base_name = os.path.basename(opt.checkpoint)
-    # save_dir = os.path.join(opt.result_dir, base_name, opt.datamode)
     save_dir = os.path.join(opt.result_dir, opt.name, opt.datamode)
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
@@ -164,7 +159,6 @@ def test_tom(opt, test_loader, model, board):
         c = inputs['cloth'].cuda()
         cm = inputs['cloth_mask'].cuda()
 
-        # outputs = model(torch.cat([agnostic, c], 1))  # CP-VTON
         outputs = model(torch.cat([agnostic, c, cm], 1))  # CP-VTON+
         p_rendered, m_composite = torch.split(outputs, 3, 1)
         p_rendered = F.tanh(p_rendered)
@@ -211,8 +205,7 @@ def main():
         with torch.no_grad():
             test_gmm(opt, test_loader, model, board)
     elif opt.stage == 'TOM':
-        # model = UnetGenerator(25, 4, 6, ngf=64, norm_layer=nn.InstanceNorm2d)  # CP-VTON
-        model = UnetGenerator(26, 4, 6, ngf=64, norm_layer=nn.InstanceNorm2d)  # CP-VTON+
+        model = UnetGenerator(28, 4, 6, ngf=64, norm_layer=nn.InstanceNorm2d)  # CP-VTON+
         load_checkpoint(model, opt.checkpoint)
         with torch.no_grad():
             test_tom(opt, test_loader, model, board)
