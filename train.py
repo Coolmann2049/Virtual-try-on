@@ -162,11 +162,10 @@ def train_tom(opt, train_loader, model, board):
             grid, _ = gmm_model(agnostic, original_cm) # Use GMM to get warping grid
         
         # Apply warping to original cloth and mask on-the-fly
-        c = F.grid_sample(original_c, grid, padding_mode='border') # This is now the warped_cloth
+        Có = F.grid_sample(original_c, grid, padding_mode='border') # This is now the warped_cloth
         cm = F.grid_sample(original_cm, grid, padding_mode='zeros') # This is now the warped_mask
         # --- END MODIFIED ---
 
-        # outputs = model(torch.cat([agnostic, c], 1))  # CP-VTON
         outputs = model(torch.cat([agnostic, c, cm], 1))  # CP-VTON+ (c and cm are now warped)
         p_rendered, m_composite = torch.split(outputs, 3, 1)
         p_rendered = F.tanh(p_rendered)
@@ -179,7 +178,6 @@ def train_tom(opt, train_loader, model, board):
 
         loss_l1 = criterionL1(p_tryon, im)
         loss_vgg = criterionVGG(p_tryon, im)
-        # loss_mask = criterionMask(m_composite, cm)  # CP-VTON
         loss_mask = criterionMask(m_composite, pcm)  # CP-VTON+
         loss = loss_l1 + loss_vgg + loss_mask
         optimizer.zero_grad()
@@ -227,11 +225,7 @@ def main():
         save_checkpoint(model, os.path.join(
             opt.checkpoint_dir, opt.name, 'gmm_final.pth'))
     elif opt.stage == 'TOM':
-        # model = UnetGenerator(25, 4, 6, ngf=64, norm_layer=nn.InstanceNorm2d)  # CP-VTON
-        # --- FIXED: Changed input_nc from 26 to 35 ---
-        model = UnetGenerator(
-            35, 4, 6, ngf=64, norm_layer=nn.InstanceNorm2d)  # CP-VTON+
-        # --- END FIXED ---
+        model = UnetGenerator(28, 4, 6, ngf=64, norm_layer=nn.InstanceNorm2d)  # CP-VTON+
         if not opt.checkpoint == '' and os.path.exists(opt.checkpoint):
             load_checkpoint(model, opt.checkpoint)
         train_tom(opt, train_loader, model, board)
