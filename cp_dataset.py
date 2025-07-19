@@ -48,12 +48,12 @@ class CPDataset(data.Dataset):
     def __getitem__(self, index):
         c_name = self.c_names[index]
         im_name = self.im_names[index]
-        if self.stage == 'GMM':
-            c = Image.open(osp.join(self.data_path, 'cloth', c_name))
-            cm = Image.open(osp.join(self.data_path, 'cloth-mask', c_name)).convert('L')
-        else:
-            c = Image.open(osp.join(self.data_path, 'warp-cloth', im_name))    # c_name, if that is used when saved
-            cm = Image.open(osp.join(self.data_path, 'warp-mask', im_name)).convert('L')    # c_name, if that is used when saved
+
+        # --- MODIFIED: Always load original cloth and cloth mask ---
+        # GMM stage uses them directly. TOM stage will use them as input to GMM (loaded in train.py)
+        c = Image.open(osp.join(self.data_path, 'cloth', c_name))
+        cm = Image.open(osp.join(self.data_path, 'cloth-mask', c_name)).convert('L')
+        # --- END MODIFIED ---
 
         # --- NEW/FIXED: Resize cloth and cloth mask to match fine_width/height ---
         c = c.resize((self.fine_width, self.fine_height), Image.BILINEAR)
@@ -121,7 +121,7 @@ class CPDataset(data.Dataset):
                 (parse_array == 4).astype(np.float32) + \
                 (parse_array == 13).astype(
                     np.float32)  # CP-VTON+ GMM input (reserved regions)
-        else:
+        else: # For TOM stage
             parse_head = (parse_array == 1).astype(np.float32) + \
                 (parse_array == 2).astype(np.float32) + \
                 (parse_array == 4).astype(np.float32) + \
@@ -189,26 +189,30 @@ class CPDataset(data.Dataset):
         # cloth-agnostic representation
         agnostic = torch.cat([shape, im_h, pose_map], 0)
 
+        # For the TOM stage, im_g is not an input to the model, but it might be used for visualization.
+        # If it's not strictly needed for TOM training, it's fine to leave this as is.
+        # If you want to visualize warped_grid during TOM, then im_g needs to be loaded.
+        # For simplicity, we keep it loaded for GMM as before, and for TOM it'll be an empty string unless added.
         if self.stage == 'GMM':
             im_g = Image.open('grid.png')
             im_g = self.transform(im_g)
         else:
-            im_g = ''
+            im_g = '' # im_g is not used as direct input to TOM, but can be generated for visuals if needed.
 
         pcm.unsqueeze_(0)  # CP-VTON+
 
         result = {
             'c_name':    c_name,     # for visualization
             'im_name':   im_name,    # for visualization or ground truth
-            'cloth':     c,          # for input
-            'cloth_mask':      cm,   # for input
+            'cloth':     c,          # for input (original cloth for GMM, or warped for TOM)
+            'cloth_mask':      cm,   # for input (original mask for GMM, or warped for TOM)
             'image':     im,         # for visualization
             'agnostic': agnostic,    # for input
             'parse_cloth': im_c,     # for ground truth
             'shape': shape,          # for visualization
             'head': im_h,            # for visualization
             'pose_image': im_pose,   # for visualization
-            'grid_image': im_g,      # for visualization
+            'grid_image': im_g,      # for visualization (only used in GMM stage currently)
             'parse_cloth_mask': pcm,      # for CP-VTON+, TOM input
             'shape_ori': shape_ori,       # original body shape without resize
         }
