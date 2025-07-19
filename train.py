@@ -76,12 +76,12 @@ def train_gmm(opt, train_loader, model, board):
         im_h = inputs['head'].cuda()
         shape = inputs['shape'].cuda()
         agnostic = inputs['agnostic'].cuda()
-        c = inputs['cloth'].cuda()
-        cm = inputs['cloth_mask'].cuda()
+        c = inputs['cloth'].cuda() # Original cloth
+        cm = inputs['cloth_mask'].cuda() # Original cloth mask
         im_c = inputs['parse_cloth'].cuda()
         im_g = inputs['grid_image'].cuda()
 
-        grid, theta = model(agnostic, cm)    # can be added c too for new training
+        grid, theta = model(agnostic, cm)
         warped_cloth = F.grid_sample(c, grid, padding_mode='border')
         warped_mask = F.grid_sample(cm, grid, padding_mode='zeros')
         warped_grid = F.grid_sample(im_g, grid, padding_mode='zeros')
@@ -91,9 +91,7 @@ def train_gmm(opt, train_loader, model, board):
                    [warped_grid, (warped_cloth+im)*0.5, im]]
 
         # loss for warped cloth
-        Lwarp = criterionL1(warped_cloth, im_c)    # changing to previous code as it corresponds to the working code
-        # Actual loss function as in the paper given below (comment out previous line and uncomment below to train as per the paper)
-        # Lwarp = criterionL1(warped_mask, cm)    # loss for warped mask thanks @xuxiaochun025 for fixing the git code.
+        Lwarp = criterionL1(warped_cloth, im_c)
         
         # grid regularization loss
         Lgic = gicloss(grid)
@@ -124,6 +122,16 @@ def train_tom(opt, train_loader, model, board):
     model.cuda()
     model.train()
 
+    # --- NEW: Load GMM model for on-the-fly warping ---
+    gmm_model = GMM(opt) # Instantiate GMM
+    # IMPORTANT: Adjust this path to your actual GMM checkpoint
+    gmm_checkpoint_path = os.path.join(opt.checkpoint_dir, "GMM-train-1", "step_034000.pth")
+    if not os.path.exists(gmm_checkpoint_path):
+        raise FileNotFoundError(f"GMM checkpoint not found at: {gmm_checkpoint_path}. Please ensure GMM training was completed and checkpoint exists.")
+    load_checkpoint(gmm_model, gmm_checkpoint_path)
+    gmm_model.eval() # Set GMM to evaluation mode (no gradients needed for warping)
+    # --- END NEW GMM Loading ---
+
     # criterion
     criterionL1 = nn.L1Loss()
     criterionVGG = VGGLoss()
@@ -145,12 +153,21 @@ def train_tom(opt, train_loader, model, board):
         shape = inputs['shape']
 
         agnostic = inputs['agnostic'].cuda()
-        c = inputs['cloth'].cuda()
-        cm = inputs['cloth_mask'].cuda()
-        pcm = inputs['parse_cloth_mask'].cuda()
+        # --- MODIFIED: Get original cloth and mask, then warp them with GMM ---
+        original_c = inputs['cloth'].cuda()       # Original cloth from dataset
+        original_cm = inputs['cloth_mask'].cuda() # Original cloth mask from dataset
+        pcm = inputs['parse_cloth_mask'].cuda()   # Parsed cloth mask for loss comparison
+
+        with torch.no_grad(): # No need to calculate gradients for GMM during TOM training
+            grid, _ = gmm_model(agnostic, original_cm) # Use GMM to get warping grid
+        
+        # Apply warping to original cloth and mask on-the-fly
+        c = F.grid_sample(original_c, grid, padding_mode='border') # This is now the warped_cloth
+        cm = F.grid_sample(original_cm, grid, padding_mode='zeros') # This is now the warped_mask
+        # --- END MODIFIED ---
 
         # outputs = model(torch.cat([agnostic, c], 1))  # CP-VTON
-        outputs = model(torch.cat([agnostic, c, cm], 1))  # CP-VTON+
+        outputs = model(torch.cat([agnostic, c, cm], 1))  # CP-VTON+ (c and cm are now warped)
         p_rendered, m_composite = torch.split(outputs, 3, 1)
         p_rendered = F.tanh(p_rendered)
         m_composite = F.sigmoid(m_composite)
@@ -161,7 +178,7 @@ def train_tom(opt, train_loader, model, board):
                    [p_rendered, p_tryon, im]]"""  # CP-VTON
 
         visuals = [[im_h, shape, im_pose],
-                   [c, pcm*2-1, m_composite*2-1],
+                   [original_c, c, m_composite*2-1], # Use original_c and warped c for visuals
                    [p_rendered, p_tryon, im]]  # CP-VTON+
 
         loss_l1 = criterionL1(p_tryon, im)
