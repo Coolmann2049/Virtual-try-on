@@ -13,7 +13,7 @@ def weights_init_normal(m):
     if classname.find('Conv') != -1:
         init.normal_(m.weight.data, 0.0, 0.02)
     elif classname.find('Linear') != -1:
-        init.normal(m.weight.data, 0.0, 0.02)
+        init.normal_(m.weight.data, 0.0, 0.02)
     elif classname.find('BatchNorm2d') != -1:
         init.normal_(m.weight.data, 1.0, 0.02)
         init.constant_(m.bias.data, 0.0)
@@ -477,17 +477,17 @@ class GicLoss(nn.Module):
     def forward(self, grid):
         Gx = grid[:, :, :, 0]
         Gy = grid[:, :, :, 1]
-        Gxcenter = Gx[:, 1:self.opt.fine_height - 1, 1:self.opt.fine_width - 1]
-        Gxup = Gx[:, 0:self.opt.fine_height - 2, 1:self.opt.fine_width - 1]
-        Gxdown = Gx[:, 2:self.opt.fine_height, 1:self.opt.fine_width - 1]
-        Gxleft = Gx[:, 1:self.opt.fine_height - 1, 0:self.opt.fine_width - 2]
-        Gxright = Gx[:, 1:self.opt.fine_height - 1, 2:self.opt.fine_width]
+        Gxcenter = Gx[:, 1:opt.fine_height - 1, 1:opt.fine_width - 1]
+        Gxup = Gx[:, 0:opt.fine_height - 2, 1:opt.fine_width - 1]
+        Gxdown = Gx[:, 2:opt.fine_height, 1:opt.fine_width - 1]
+        Gxleft = Gx[:, 1:opt.fine_height - 1, 0:opt.fine_width - 2]
+        Gxright = Gx[:, 1:opt.fine_height - 1, 2:opt.fine_width]
 
-        Gycenter = Gy[:, 1:self.opt.fine_height - 1, 1:self.opt.fine_width - 1]
-        Gyup = Gy[:, 0:self.opt.fine_height - 2, 1:self.opt.fine_width - 1]
-        Gydown = Gy[:, 2:self.opt.fine_height, 1:self.opt.fine_width - 1]
-        Gyleft = Gy[:, 1:self.opt.fine_height - 1, 0:self.opt.fine_width - 2]
-        Gyright = Gy[:, 1:self.opt.fine_height - 1, 2:self.opt.fine_width]
+        Gycenter = Gy[:, 1:opt.fine_height - 1, 1:opt.fine_width - 1]
+        Gyup = Gy[:, 0:opt.fine_height - 2, 1:opt.fine_width - 1]
+        Gydown = Gy[:, 2:opt.fine_height, 1:opt.fine_width - 1]
+        Gyleft = Gy[:, 1:opt.fine_height - 1, 0:opt.fine_width - 2]
+        Gyright = Gy[:, 1:opt.fine_height - 1, 2:opt.fine_width]
 
         dtleft = self.dT(Gxleft, Gxcenter)
         dtright = self.dT(Gxright, Gxcenter)
