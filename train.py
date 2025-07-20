@@ -225,7 +225,7 @@ def main():
         save_checkpoint(model, os.path.join(
             opt.checkpoint_dir, opt.name, 'gmm_final.pth'))
     elif opt.stage == 'TOM':
-        model = UnetGenerator(28, 4, 6, ngf=64, norm_layer=nn.InstanceNorm2d)  # CP-VTON+
+        model = UnetGenerator(35, 4, 6, ngf=64, norm_layer=nn.InstanceNorm2d)  # CP-VTON+
         if not opt.checkpoint == '' and os.path.exists(opt.checkpoint):
             load_checkpoint(model, opt.checkpoint)
         train_tom(opt, train_loader, model, board)
