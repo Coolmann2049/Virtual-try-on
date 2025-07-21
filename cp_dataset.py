@@ -14,21 +14,21 @@ class CPDataset(data.Dataset):
     """Dataset for CP-VTON+.
     """
 
-    def __init__(self, opt):
+    def __init__(self, opt, datamode='train', data_list=None):
         super(CPDataset, self).__init__()
         # Base settings
         self.opt = opt
         self.root = opt.dataroot
-        self.datamode = opt.datamode  # 'train' or 'val'
+        self.datamode = datamode  # Explicitly set via argument
         self.stage = opt.stage  # 'GMM' or 'TOM'
-        self.data_list = opt.data_list if opt.datamode == 'train' else opt.val_data_list
+        self.data_list = data_list if data_list else opt.data_list  # Use provided data_list or default
         self.fine_height = opt.fine_height
         self.fine_width = opt.fine_width
         self.radius = opt.radius
-        self.data_path = osp.join(opt.dataroot, opt.datamode)
+        self.data_path = osp.join(opt.dataroot, self.datamode)
 
         # Define transforms with augmentation, disabled for validation
-        if opt.datamode == 'train':
+        if self.datamode == 'train':
             self.transform = transforms.Compose([
                 transforms.RandomHorizontalFlip(),  # Add horizontal flip for diversity
                 transforms.ColorJitter(brightness=0.2, contrast=0.2),  # Add color variation
@@ -219,12 +219,12 @@ if __name__ == "__main__":
     parser.add_argument("--datamode", default="train")
     parser.add_argument("--stage", default="GMM")
     parser.add_argument("--data_list", default="train_pairs.txt")
-    parser.add_argument("--val_data_list", default="val_pairs.txt")  # Added for validation
+    parser.add_argument("--val_data_list", default="val_pairs.txt")
     parser.add_argument("--fine_width", type=int, default=192)
     parser.add_argument("--fine_height", type=int, default=256)
     parser.add_argument("--radius", type=int, default=3)
     parser.add_argument("--shuffle", action='store_true', help='shuffle input data')
-    parser.add_argument('-b', '--batch-size', type=int, default=2)  # Reduced from 4
+    parser.add_argument('-b', '--batch-size', type=int, default=2)
     parser.add_argument('-j', '--workers', type=int, default=1)
 
     opt = parser.parse_args()
