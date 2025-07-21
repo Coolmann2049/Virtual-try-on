@@ -133,7 +133,7 @@ def train_gmm(opt, train_loader, val_loader, model, board):
         if (step + 1) % opt.save_count == 0:
             for i in range(min(1, c.size(0))):  # Save only the first image to avoid clutter
                 c_name = inputs['c_name'][i].split('/')[-1].replace('.jpg', f'_step{step+1:06d}.png')
-                save_cloth = (warped_cloth[i].detach().cpu().clamp(-1, 1) * 0.5 + 0.5).numpy().transpose(1, 2, 0) * 255
+                save_cloth = (warped_cloth[i].detach ().cpu().clamp(-1, 1) * 0.5 + 0.5).numpy().transpose(1, 2, 0) * 255
                 save_mask = (warped_mask[i].detach().cpu().numpy()[0] * 255).astype(np.uint8)
                 Image.fromarray(save_cloth.astype(np.uint8)).save(os.path.join(warp_dir, c_name))
                 Image.fromarray(save_mask).save(os.path.join(warp_mask_dir, c_name))
@@ -184,7 +184,7 @@ def train_tom(opt, train_loader, val_loader, model, board):
     model.train()
 
     gmm_model = GMM(opt)
-    gmm_checkpoint_path = os.path.join(opt.checkpoint_dir, "GMM-train-1", "step_034000.pth")
+    gmm_checkpoint_path = opt.checkpoint if opt.checkpoint else os.path.join(opt.checkpoint_dir, "GMM-train-1", "step_034000.pth")
     if not os.path.exists(gmm_checkpoint_path):
         raise FileNotFoundError(f"GMM checkpoint not found at: {gmm_checkpoint_path}. Please ensure GMM training was completed and checkpoint exists.")
     load_checkpoint(gmm_model, gmm_checkpoint_path)
