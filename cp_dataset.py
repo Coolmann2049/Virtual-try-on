@@ -25,7 +25,7 @@ class CPDataset(data.Dataset):
         self.fine_height = opt.fine_height
         self.fine_width = opt.fine_width
         self.radius = opt.radius
-        self.data_path = osp.join(opt.dataroot, self.datamode)
+        self.data_path = osp.join(opt.dataroot, self.datamode if osp.exists(osp.join(opt.dataroot, datamode)) else 'train')
 
         # Define transforms with augmentation, disabled for validation
         if self.datamode == 'train':
