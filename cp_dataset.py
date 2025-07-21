@@ -27,8 +27,15 @@ class CPDataset(data.Dataset):
         self.radius = opt.radius
         self.data_path = self.root
 
-        # Validate required subdirectories
-        required_dirs = ['cloth', 'cloth-mask', 'image', 'image-parse-new', 'image-mask', 'openpose_json']
+        # Validate required subdirectories based on datamode
+        required_dirs = [
+            f'{self.datamode}/cloth',
+            f'{self.datamode}/cloth-mask',
+            f'{self.datamode}/image',
+            f'{self.datamode}/image-parse-new',
+            'image-mask',
+            f'{self.datamode}/openpose_json'
+        ]
         for d in required_dirs:
             if not (self.data_path / d).exists():
                 raise FileNotFoundError(f"Directory {self.data_path / d} does not exist")
