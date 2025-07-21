@@ -1,34 +1,39 @@
 import torch
 import torch.utils.data as data
 import torchvision.transforms as transforms
-
 from PIL import Image
 from PIL import ImageDraw
-
 import os.path as osp
+from pathlib import Path
 import numpy as np
 import json
+import logging
 
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 class CPDataset(data.Dataset):
-    """Dataset for CP-VTON+.
-    """
-
+    """Dataset for CP-VTON+."""
     def __init__(self, opt, datamode='train', data_list=None):
         super(CPDataset, self).__init__()
-        # Base settings
         self.opt = opt
-        self.root = opt.dataroot
-        self.datamode = datamode  # Explicitly set via argument
-        self.stage = opt.stage  # 'GMM' or 'TOM'
-        self.data_list = data_list if data_list else opt.data_list  # Use provided data_list or default
+        self.root = Path(opt.dataroot)
+        self.datamode = datamode
+        self.stage = opt.stage
+        self.data_list = data_list if data_list else opt.data_list
         self.fine_height = opt.fine_height
         self.fine_width = opt.fine_width
         self.radius = opt.radius
-        # Set data_path to dataroot directly, avoiding datamode subdirectory unless it exists with data
-        self.data_path = opt.dataroot
+        self.data_path = self.root
 
-        # Define transforms with augmentation, disabled for validation
+        # Validate required subdirectories
+        required_dirs = ['cloth', 'cloth-mask', 'image', 'image-parse-new', 'image-mask', 'openpose_json']
+        for d in required_dirs:
+            if not (self.data_path / d).exists():
+                raise FileNotFoundError(f"Directory {self.data_path / d} does not exist")
+
+        # Define transforms
         if self.datamode == 'train':
             self.transform = transforms.Compose([
                 transforms.RandomHorizontalFlip(),
@@ -36,25 +41,26 @@ class CPDataset(data.Dataset):
                 transforms.ToTensor(),
                 transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
             ])
-        else:  # 'val' mode
+        else:
             self.transform = transforms.Compose([
                 transforms.ToTensor(),
                 transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
             ])
 
-        # Load data list based on mode
-        im_names = []
-        c_names = []
-        with open(osp.join(opt.dataroot, self.data_list), 'r') as f:
+        # Load data list
+        im_names, c_names = [], []
+        data_list_path = self.data_path / self.data_list
+        if not data_list_path.exists():
+            raise FileNotFoundError(f"Data list {data_list_path} does not exist")
+        with open(data_list_path, 'r') as f:
             for line in f.readlines():
                 im_name, c_name = line.strip().split()
-                # Remove 'train/' prefix from c_name if present
-                c_name = c_name.replace('train/', '')
+                c_name = c_name.replace('train/', '')  # Remove train/ prefix
                 im_names.append(im_name)
                 c_names.append(c_name)
-
         self.im_names = im_names
         self.c_names = c_names
+        logger.info(f"Loaded {len(im_names)} pairs from {data_list_path}")
 
     def name(self):
         return "CPDataset"
@@ -63,75 +69,92 @@ class CPDataset(data.Dataset):
         c_name = self.c_names[index]
         im_name = self.im_names[index]
 
-        # Load and resize cloth and cloth mask
-        c = Image.open(osp.join(self.data_path, 'cloth', c_name))
-        cm = Image.open(osp.join(self.data_path, 'cloth-mask', c_name)).convert('L')
+        # Try loading cloth from cloth/ or cloth/train/
+        cloth_path = self.data_path / 'cloth' / c_name
+        cloth_train_path = self.data_path / 'cloth' / 'train' / c_name
+        try:
+            c = Image.open(cloth_path if cloth_path.exists() else cloth_train_path)
+        except FileNotFoundError:
+            logger.error(f"Cloth image not found: {cloth_path} or {cloth_train_path}")
+            raise FileNotFoundError(f"Cloth image {c_name} not found")
+        
+        cm_path = self.data_path / 'cloth-mask' / c_name
+        try:
+            cm = Image.open(cm_path).convert('L')
+        except FileNotFoundError:
+            logger.error(f"Cloth mask not found: {cm_path}")
+            raise
+        
         c = c.resize((self.fine_width, self.fine_height), Image.BILINEAR)
         cm = cm.resize((self.fine_width, self.fine_height), Image.BILINEAR)
-
-        c = self.transform(c)  # [-1,1] with augmentation for train, none for val
+        c = self.transform(c)
         cm_array = np.array(cm)
         cm_array = (cm_array >= 128).astype(np.float32)
-        cm = torch.from_numpy(cm_array)  # [0,1]
-        cm.unsqueeze_(0)
+        cm = torch.from_numpy(cm_array).unsqueeze(0)
 
-        # Load and resize person image
-        im = Image.open(osp.join(self.data_path, 'image', im_name))
+        Dolores
+        # Load person image
+        try:
+            im = Image.open(self.data_path / 'image' / im_name)
+        except FileNotFoundError:
+            logger.error(f"Person image not found: {self.data_path / 'image' / im_name}")
+            raise
         im = im.resize((self.fine_width, self.fine_height), Image.BILINEAR)
-        im = self.transform(im)  # [-1,1] with augmentation for train, none for val
+        im = self.transform(im)
 
-        # Load and resize parsing image
+        # Parse images
         parse_name = im_name.replace('.jpg', '.png')
-        im_parse = Image.open(osp.join(self.data_path, 'image-parse-new', parse_name)).convert('L')
+        try:
+            im_parse = Image.open(self.data_path / 'image-parse-new' / parse_name).convert('L')
+            im_mask = Image.open(self.data_path / 'image-mask' / parse_name).convert('L')
+        except FileNotFoundError as e:
+            logger.error(f"Parse or mask image not found: {e}")
+            raise
         im_parse = im_parse.resize((self.fine_width, self.fine_height), Image.BILINEAR)
-        parse_array = np.array(im_parse)
-
-        im_mask = Image.open(osp.join(self.data_path, 'image-mask', parse_name)).convert('L')
         im_mask = im_mask.resize((self.fine_width, self.fine_height), Image.BILINEAR)
+        parse_array = np.array(im_parse)
         mask_array = np.array(im_mask)
 
-        # Parse shape from body mask (CP-VTON+)
         parse_shape = (mask_array > 0).astype(np.float32)
-
         if self.stage == 'GMM':
             parse_head = (parse_array == 1).astype(np.float32) + \
-                         (parse_array == 4).astype(np.float32) + \
-                         (parse_array == 13).astype(np.float32)  # CP-VTON+ GMM input
-        else:  # For TOM stage
+                        (parse_array == 4).astype(np.float32) + \
+                        (parse_array == 13).astype(np.float32)
+        else:
             parse_head = (parse_array == 1).astype(np.float32) + \
-                         (parse_array == 2).astype(np.float32) + \
-                         (parse_array == 4).astype(np.float32) + \
-                         (parse_array == 9).astype(np.float32) + \
-                         (parse_array == 12).astype(np.float32) + \
-                         (parse_array == 13).astype(np.float32) + \
-                         (parse_array == 16).astype(np.float32) + \
-                         (parse_array == 17).astype(np.float32)
-
+                        (parse_array == 2).astype(np.float32) + \
+                        (parse_array == 4).astype(np.float32) + \
+                        (parse_array == 9).astype(np.float32) + \
+                        (parse_array == 12).astype(np.float32) + \
+                        (parse_array == 13).astype(np.float32) + \
+                        (parse_array == 16).astype(np.float32) + \
+                        (parse_array == 17).astype(np.float32)
         parse_cloth = (parse_array == 5).astype(np.float32) + \
-                      (parse_array == 6).astype(np.float32) + \
-                      (parse_array == 7).astype(np.float32)  # upper-clothes labels
+                     (parse_array == 6).astype(np.float32) + \
+                     (parse_array == 7).astype(np.float32)
 
-        # Resize and transform shape
         parse_shape_ori = Image.fromarray((parse_shape * 255).astype(np.uint8))
-        parse_shape = parse_shape_ori.resize((self.fine_width//16, self.fine_height//16), Image.BILINEAR)
+        parse_shape = parse_shape_ori.resize((self.fine_width // 16, self.fine_height // 16), Image.BILINEAR)
         parse_shape = parse_shape.resize((self.fine_width, self.fine_height), Image.BILINEAR)
         parse_shape_ori = parse_shape_ori.resize((self.fine_width, self.fine_height), Image.BILINEAR)
 
-        shape_ori = self.transform(parse_shape_ori.convert('RGB'))  # [-1,1]
-        shape = self.transform(parse_shape.convert('RGB'))  # [-1,1]
-        phead = torch.from_numpy(parse_head)  # [0,1]
-        pcm = torch.from_numpy(parse_cloth)  # [0,1]
+        shape_ori = self.transform(parse_shape_ori.convert('RGB'))
+        shape = self.transform(parse_shape.convert('RGB'))
+        phead = torch.from_numpy(parse_head)
+        pcm = torch.from_numpy(parse_cloth)
 
-        # Upper cloth and head masks
-        im_c = im * pcm + (1 - pcm)  # [-1,1], fill 1 for other parts
-        im_h = im * phead - (1 - phead)  # [-1,1], fill -1 for other parts
+        im_c = im * pcm + (1 - pcm)
+        im_h = im * phead - (1 - phead)
 
-        # Load and resize pose points
+        # Load pose points
         pose_name = im_name.replace('.jpg', '_keypoints.json')
-        with open(osp.join(self.data_path, 'openpose_json', pose_name), 'r') as f:
-            pose_label = json.load(f)
-            pose_data = np.array(pose_label['people'][0]['pose_keypoints_2d'])
-            pose_data = pose_data.reshape((-1, 3))
+        try:
+            with open(self.data_path / 'openpose_json' / pose_name, 'r') as f:
+                pose_label = json.load(f)
+                pose_data = np.array(pose_label['people'][0]['pose_keypoints_2d']).reshape((-1, 3))
+        except FileNotFoundError:
+            logger.error(f"Pose file not found: {self.data_path / 'openpose_json' / pose_name}")
+            raise
 
         point_num = pose_data.shape[0]
         pose_map = torch.zeros(point_num, self.fine_height, self.fine_width)
@@ -141,30 +164,26 @@ class CPDataset(data.Dataset):
         for i in range(point_num):
             one_map = Image.new('L', (self.fine_width, self.fine_height))
             draw = ImageDraw.Draw(one_map)
-            pointx = pose_data[i, 0]
-            pointy = pose_data[i, 1]
+            pointx, pointy = pose_data[i, 0], pose_data[i, 1]
             if pointx > 1 and pointy > 1:
-                draw.rectangle((pointx-r, pointy-r, pointx+r, pointy+r), 'white', 'white')
-                pose_draw.rectangle((pointx-r, pointy-r, pointx+r, pointy+r), 'white', 'white')
+                draw.rectangle((pointx - r, pointy - r, pointx + r, pointy + r), 'white', 'white')
+                pose_draw.rectangle((pointx - r, pointy - r, pointx + r, pointy + r), 'white', 'white')
             one_map = self.transform(one_map.convert('RGB'))
             pose_map[i] = one_map[0]
 
-        # Resize and transform pose image
         im_pose = im_pose.resize((self.fine_width, self.fine_height), Image.BILINEAR)
-        im_pose = self.transform(im_pose.convert('RGB'))  # [-1,1] with augmentation for train, none for val
+        im_pose = self.transform(im_pose.convert('RGB'))
 
-        # Cloth-agnostic representation
         agnostic = torch.cat([shape, im_h, pose_map], 0)
 
-        # Grid image for GMM visualization
         if self.stage == 'GMM':
             im_g = Image.open('grid.png')
             im_g = im_g.resize((self.fine_width, self.fine_height), Image.BILINEAR)
             im_g = self.transform(im_g)
         else:
-            im_g = ''  # Not used as input for TOM
+            im_g = ''
 
-        pcm.unsqueeze_(0)  # CP-VTON+
+        pcm.unsqueeze_(0)
 
         result = {
             'c_name': c_name,
@@ -181,22 +200,18 @@ class CPDataset(data.Dataset):
             'parse_cloth_mask': pcm,
             'shape_ori': shape_ori,
         }
-
         return result
 
     def __len__(self):
         return len(self.im_names)
 
-
 class CPDataLoader(object):
     def __init__(self, opt, dataset):
         super(CPDataLoader, self).__init__()
-
         if opt.shuffle:
             train_sampler = torch.utils.data.sampler.RandomSampler(dataset)
         else:
             train_sampler = None
-
         self.data_loader = torch.utils.data.DataLoader(
             dataset, batch_size=opt.batch_size, shuffle=(train_sampler is None),
             num_workers=opt.workers, pin_memory=True, sampler=train_sampler)
@@ -209,13 +224,10 @@ class CPDataLoader(object):
         except StopIteration:
             self.data_iter = self.data_loader.__iter__()
             batch = self.data_iter.__next__()
-
         return batch
-
 
 if __name__ == "__main__":
     print("Check the dataset for geometric matching module!")
-
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataroot", default="data")
@@ -229,14 +241,11 @@ if __name__ == "__main__":
     parser.add_argument("--shuffle", action='store_true', help='shuffle input data')
     parser.add_argument('-b', '--batch-size', type=int, default=2)
     parser.add_argument('-j', '--workers', type=int, default=1)
-
     opt = parser.parse_args()
     dataset = CPDataset(opt)
     data_loader = CPDataLoader(opt, dataset)
-
     print('Size of the dataset: %05d, dataloader: %04d' % (len(dataset), len(data_loader)))
     first_item = dataset.__getitem__(0)
     first_batch = data_loader.next_batch()
-
     from IPython import embed
     embed()
