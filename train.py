@@ -11,6 +11,8 @@ from networks import GicLoss, GMM, UnetGenerator, VGGLoss, load_checkpoint, save
 
 from tensorboardX import SummaryWriter
 from visualization import board_add_image, board_add_images
+from PIL import Image
+import numpy as np
 
 
 def get_opt():
@@ -92,6 +94,12 @@ def train_gmm(opt, train_loader, val_loader, model, board):
     best_val_loss = float('inf')
     patience = 5000  # Steps to wait for improvement
     trigger_times = 0
+    warp_dir = os.path.join(opt.checkpoint_dir, opt.name, 'warp-cloth')  # New directory for warped outputs
+    if not os.path.exists(warp_dir):
+        os.makedirs(warp_dir)
+    warp_mask_dir = os.path.join(opt.checkpoint_dir, opt.name, 'warp-mask')
+    if not os.path.exists(warp_mask_dir):
+        os.makedirs(warp_mask_dir)
 
     for step in range(opt.keep_step + opt.decay_step):
         iter_start_time = time.time()
@@ -111,6 +119,15 @@ def train_gmm(opt, train_loader, val_loader, model, board):
         warped_cloth = F.grid_sample(c, grid, padding_mode='border')
         warped_mask = F.grid_sample(cm, grid, padding_mode='zeros')
         warped_grid = F.grid_sample(im_g, grid, padding_mode='zeros')
+
+        # Save warped cloth and mask for the first image in the batch
+        if (step + 1) % opt.save_count == 0:
+            for i in range(min(1, c.size(0))):  # Save only the first image to avoid clutter
+                c_name = inputs['c_name'][i].split('/')[-1].replace('.jpg', f'_step{step+1:06d}.png')
+                save_cloth = (warped_cloth[i].detach().cpu().clamp(-1, 1) * 0.5 + 0.5).numpy().transpose(1, 2, 0) * 255
+                save_mask = (warped_mask[i].detach().cpu().numpy()[0] * 255).astype(np.uint8)
+                Image.fromarray(save_cloth.astype(np.uint8)).save(osp.join(warp_dir, c_name))
+                Image.fromarray(save_mask).save(osp.join(warp_mask_dir, c_name))
 
         visuals = [[im_h, shape, im_pose],
                    [c, warped_cloth, im_c],
@@ -222,7 +239,8 @@ def train_tom(opt, train_loader, val_loader, model, board):
                      loss_vgg.item(), loss_mask.item()), flush=True)
 
         if (step + 1) % opt.save_count == 0:
-            save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.name, f'step_{step+1:06d}.pth'))
+            save_checkpoint(model, os.path.join(
+                opt.checkpoint_dir, opt.name, f'step_{step+1:06d}.pth'))
 
 
 def main():
@@ -230,32 +248,34 @@ def main():
     print(opt)
     print("Start to train stage: %s, named: %s!" % (opt.stage, opt.name))
 
-    # create dataset and dataloader
+    # Create dataset and dataloader
     train_dataset = CPDataset(opt)
     train_loader = CPDataLoader(opt, train_dataset)
 
-    # create validation dataloader
+    # Create validation dataloader
     val_dataset = CPDataset(opt, datamode='val', data_list=opt.val_data_list)
     val_loader = CPDataLoader(opt, val_dataset)
 
-    # visualization
+    # Visualization
     if not os.path.exists(opt.tensorboard_dir):
         os.makedirs(opt.tensorboard_dir)
     board = SummaryWriter(logdir=os.path.join(opt.tensorboard_dir, opt.name))
 
-    # create model & train & save the final checkpoint
+    # Create model & train & save the final checkpoint
     if opt.stage == 'GMM':
         model = GMM(opt)
         if not opt.checkpoint == '' and os.path.exists(opt.checkpoint):
             load_checkpoint(model, opt.checkpoint)
         train_gmm(opt, train_loader, val_loader, model, board)
-        save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.name, 'gmm_final.pth'))
+        save_checkpoint(model, os.path.join(
+            opt.checkpoint_dir, opt.name, 'gmm_final.pth'))
     elif opt.stage == 'TOM':
         model = UnetGenerator(35, 4, 6, ngf=64, norm_layer=nn.InstanceNorm2d)
         if not opt.checkpoint == '' and os.path.exists(opt.checkpoint):
             load_checkpoint(model, opt.checkpoint)
         train_tom(opt, train_loader, val_loader, model, board)
-        save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.name, 'tom_final.pth'))
+        save_checkpoint(model, os.path.join(
+            opt.checkpoint_dir, opt.name, 'tom_final.pth'))
     else:
         raise NotImplementedError('Model [%s] is not implemented' % opt.stage)
 
