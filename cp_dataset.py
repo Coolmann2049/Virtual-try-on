@@ -55,7 +55,7 @@ class CPDataset(data.Dataset):
         with open(data_list_path, 'r') as f:
             for line in f.readlines():
                 im_name, c_name = line.strip().split()
-                c_name = c_name.replace('train/', '')  # Remove train/ prefix
+                c_name = c_name.replace('train/', '').replace('test/', '')  # Remove train/ or test/ prefix
                 im_names.append(im_name)
                 c_names.append(c_name)
         self.im_names = im_names
@@ -69,20 +69,26 @@ class CPDataset(data.Dataset):
         c_name = self.c_names[index]
         im_name = self.im_names[index]
 
-        # Try loading cloth from cloth/ or cloth/train/
-        cloth_path = self.data_path / 'cloth' / c_name
-        cloth_train_path = self.data_path / 'cloth' / 'train' / c_name
+        # Adjust base path based on datamode
+        base_path = self.data_path / self.datamode
+
+        # Try loading cloth from test/cloth/ or train/cloth/
+        cloth_path = base_path / 'cloth' / c_name
+        cloth_alt_path = self.data_path / ('train' if self.datamode == 'test' else 'test') / 'cloth' / c_name
         try:
-            c = Image.open(cloth_path if cloth_path.exists() else cloth_train_path)
+            c = Image.open(cloth_path if cloth_path.exists() else cloth_alt_path)
         except FileNotFoundError:
-            logger.error(f"Cloth image not found: {cloth_path} or {cloth_train_path}")
+            logger.error(f"Cloth image not found: {cloth_path} or {cloth_alt_path}")
             raise FileNotFoundError(f"Cloth image {c_name} not found")
         
-        cm_path = self.data_path / 'cloth-mask' / c_name
+        # Try loading cloth mask from test/cloth-mask/ or train/cloth-mask/
+        cm_name = c_name.replace('.jpg', '_mask.jpg')
+        cm_path = base_path / 'cloth-mask' / cm_name
+        cm_alt_path = self.data_path / ('train' if self.datamode == 'test' else 'test') / 'cloth-mask' / cm_name
         try:
-            cm = Image.open(cm_path).convert('L')
+            cm = Image.open(cm_path if cm_path.exists() else cm_alt_path).convert('L')
         except FileNotFoundError:
-            logger.error(f"Cloth mask not found: {cm_path}")
+            logger.error(f"Cloth mask not found: {cm_path} or {cm_alt_path}")
             raise
         
         c = c.resize((self.fine_width, self.fine_height), Image.BILINEAR)
@@ -92,12 +98,11 @@ class CPDataset(data.Dataset):
         cm_array = (cm_array >= 128).astype(np.float32)
         cm = torch.from_numpy(cm_array).unsqueeze(0)
 
-        Dolores
         # Load person image
         try:
-            im = Image.open(self.data_path / 'image' / im_name)
+            im = Image.open(base_path / 'image' / im_name)
         except FileNotFoundError:
-            logger.error(f"Person image not found: {self.data_path / 'image' / im_name}")
+            logger.error(f"Person image not found: {base_path / 'image' / im_name}")
             raise
         im = im.resize((self.fine_width, self.fine_height), Image.BILINEAR)
         im = self.transform(im)
@@ -105,7 +110,7 @@ class CPDataset(data.Dataset):
         # Parse images
         parse_name = im_name.replace('.jpg', '.png')
         try:
-            im_parse = Image.open(self.data_path / 'image-parse-new' / parse_name).convert('L')
+            im_parse = Image.open(base_path / 'image-parse-new' / parse_name).convert('L')
             im_mask = Image.open(self.data_path / 'image-mask' / parse_name).convert('L')
         except FileNotFoundError as e:
             logger.error(f"Parse or mask image not found: {e}")
@@ -149,11 +154,11 @@ class CPDataset(data.Dataset):
         # Load pose points
         pose_name = im_name.replace('.jpg', '_keypoints.json')
         try:
-            with open(self.data_path / 'openpose_json' / pose_name, 'r') as f:
+            with open(base_path / 'openpose_json' / pose_name, 'r') as f:
                 pose_label = json.load(f)
                 pose_data = np.array(pose_label['people'][0]['pose_keypoints_2d']).reshape((-1, 3))
         except FileNotFoundError:
-            logger.error(f"Pose file not found: {self.data_path / 'openpose_json' / pose_name}")
+            logger.error(f"Pose file not found: {base_path / 'openpose_json' / pose_name}")
             raise
 
         point_num = pose_data.shape[0]
