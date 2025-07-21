@@ -53,8 +53,17 @@ def validate_gmm(model, val_loader, criterionL1, gicloss):
     model.eval()
     total_loss = 0.0
     total_gic = 0.0
+    val_iter = val_loader.data_iter  # Get the iterator
+    num_batches = len(val_loader.data_loader)  # Number of batches from the underlying DataLoader
+    
     with torch.no_grad():
-        for inputs in val_loader:
+        for _ in range(num_batches):
+            try:
+                inputs = val_loader.next_batch()  # Use next_batch instead of iteration
+            except StopIteration:
+                val_loader.data_iter = val_loader.data_loader.__iter__()
+                inputs = val_loader.next_batch()
+
             im = inputs['image'].cuda()
             im_pose = inputs['pose_image'].cuda()
             im_h = inputs['head'].cuda()
@@ -78,7 +87,7 @@ def validate_gmm(model, val_loader, criterionL1, gicloss):
             total_gic += (40 * Lgic).item()
 
     model.train()
-    return total_loss / len(val_loader), total_gic / len(val_loader)
+    return total_loss / num_batches, total_gic / num_batches
 
 
 def train_gmm(opt, train_loader, val_loader, model, board):
@@ -126,8 +135,8 @@ def train_gmm(opt, train_loader, val_loader, model, board):
                 c_name = inputs['c_name'][i].split('/')[-1].replace('.jpg', f'_step{step+1:06d}.png')
                 save_cloth = (warped_cloth[i].detach().cpu().clamp(-1, 1) * 0.5 + 0.5).numpy().transpose(1, 2, 0) * 255
                 save_mask = (warped_mask[i].detach().cpu().numpy()[0] * 255).astype(np.uint8)
-                Image.fromarray(save_cloth.astype(np.uint8)).save(osp.join(warp_dir, c_name))
-                Image.fromarray(save_mask).save(osp.join(warp_mask_dir, c_name))
+                Image.fromarray(save_cloth.astype(np.uint8)).save(os.path.join(warp_dir, c_name))
+                Image.fromarray(save_mask).save(os.path.join(warp_mask_dir, c_name))
 
         visuals = [[im_h, shape, im_pose],
                    [c, warped_cloth, im_c],
