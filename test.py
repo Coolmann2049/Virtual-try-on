@@ -17,22 +17,14 @@ def get_opt():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--name", default="GMM")
-    # parser.add_argument("--name", default="TOM")
-
     parser.add_argument("--gpu_ids", default="")
     parser.add_argument('-j', '--workers', type=int, default=1)
     parser.add_argument('-b', '--batch-size', type=int, default=4)
 
     parser.add_argument("--dataroot", default="data")
-
     parser.add_argument("--datamode", default="test")
-
     parser.add_argument("--stage", default="GMM")
-    # parser.add_argument("--stage", default="TOM")
-
     parser.add_argument("--data_list", default="test_pairs.txt")
-    # parser.add_argument("--data_list", default="test_pairs_same.txt")
-
     parser.add_argument("--fine_width", type=int, default=192)
     parser.add_argument("--fine_height", type=int, default=256)
     parser.add_argument("--radius", type=int, default=5)
@@ -40,12 +32,11 @@ def get_opt():
 
     parser.add_argument('--tensorboard_dir', type=str,
                         default='tensorboard', help='save tensorboard infos')
-
     parser.add_argument('--result_dir', type=str,
                         default='result', help='save result infos')
-
     parser.add_argument('--checkpoint', type=str, default='checkpoints/GMM/gmm_final.pth', help='model checkpoint for test')
-    # parser.add_argument('--checkpoint', type=str, default='checkpoints/TOM/tom_final.pth', help='model checkpoint for test')
+    parser.add_argument('--gmm_checkpoint', type=str, default='checkpoints/GMM/gmm_final.pth', help='GMM model checkpoint for test')
+    parser.add_argument('--cloth_subdir', type=str, default='cloth', help='Subdirectory for cloth images (e.g., cloth or train/cloth)')
 
     parser.add_argument("--display_count", type=int, default=1)
     parser.add_argument("--shuffle", action='store_true',
@@ -118,9 +109,11 @@ def test_gmm(opt, test_loader, model, board):
             print('step: %8d, time: %.3f' % (step+1, t), flush=True)
 
 
-def test_tom(opt, test_loader, model, board):
+def test_tom(opt, test_loader, model, gmm_model, board):
     model.cuda()
     model.eval()
+    gmm_model.cuda()
+    gmm_model.eval()
 
     base_name = os.path.basename(opt.checkpoint)
     save_dir = os.path.join(opt.result_dir, opt.name, opt.datamode)
@@ -143,7 +136,7 @@ def test_tom(opt, test_loader, model, board):
         os.makedirs(shape_dir)
     im_h_dir = os.path.join(save_dir, 'im_h')
     if not os.path.exists(im_h_dir):
-        os.makedirs(im_h_dir)  # for test data
+        os.makedirs(im_h_dir)
 
     print('Dataset size: %05d!' % (len(test_loader.dataset)), flush=True)
     for step, inputs in enumerate(test_loader.data_loader):
@@ -156,17 +149,27 @@ def test_tom(opt, test_loader, model, board):
         shape = inputs['shape']
 
         agnostic = inputs['agnostic'].cuda()
-        c = inputs['cloth'].cuda()
-        cm = inputs['cloth_mask'].cuda()
+        original_c = inputs['cloth'].cuda()
+        original_cm = inputs['cloth_mask'].cuda()
+        pcm = inputs['parse_cloth_mask'].cuda()
 
-        outputs = model(torch.cat([agnostic, c, cm], 1))  # CP-VTON+
+        # Adjust cloth path if needed based on cloth_subdir
+        adjusted_c_names = [os.path.join(opt.cloth_subdir, c_name.split('/', 1)[1]) if 'train' in c_name else c_name for c_name in inputs['c_name']]
+
+        # Warp cloth using GMM
+        with torch.no_grad():
+            grid, _ = gmm_model(agnostic, original_cm)
+            c = F.grid_sample(original_c, grid, padding_mode='border')
+            cm = F.grid_sample(original_cm, grid, padding_mode='zeros')
+
+        outputs = model(torch.cat([agnostic, c, cm], 1))
         p_rendered, m_composite = torch.split(outputs, 3, 1)
         p_rendered = F.tanh(p_rendered)
         m_composite = F.sigmoid(m_composite)
         p_tryon = c * m_composite + p_rendered * (1 - m_composite)
 
         visuals = [[im_h, shape, im_pose],
-                   [c, 2*cm-1, m_composite],
+                   [original_c, 2*original_cm-1, m_composite],
                    [p_rendered, p_tryon, im]]
 
         save_images(p_tryon, im_names, try_on_dir)
@@ -174,7 +177,7 @@ def test_tom(opt, test_loader, model, board):
         save_images(shape, im_names, shape_dir)
         save_images(im_pose, im_names, im_pose_dir)
         save_images(m_composite, im_names, m_composite_dir)
-        save_images(p_rendered, im_names, p_rendered_dir)  # For test data
+        save_images(p_rendered, im_names, p_rendered_dir)
 
         if (step+1) % opt.display_count == 0:
             board_add_images(board, 'combine', visuals, step+1)
@@ -187,8 +190,8 @@ def main():
     print(opt)
     print("Start to test stage: %s, named: %s!" % (opt.stage, opt.name))
 
-    # create dataset
-    test_dataset = CPDataset(opt)
+    # create dataset with cloth subdirectory option
+    test_dataset = CPDataset(opt, cloth_subdir=opt.cloth_subdir)
 
     # create dataloader
     test_loader = CPDataLoader(opt, test_dataset)
@@ -205,10 +208,12 @@ def main():
         with torch.no_grad():
             test_gmm(opt, test_loader, model, board)
     elif opt.stage == 'TOM':
-        model = UnetGenerator(35, 4, 6, ngf=64, norm_layer=nn.InstanceNorm2d)  # Updated input_nc to 35
+        model = UnetGenerator(35, 4, 6, ngf=64, norm_layer=nn.InstanceNorm2d)
+        gmm_model = GMM(opt)
         load_checkpoint(model, opt.checkpoint)
+        load_checkpoint(gmm_model, opt.gmm_checkpoint)
         with torch.no_grad():
-            test_tom(opt, test_loader, model, board)
+            test_tom(opt, test_loader, model, gmm_model, board)
     else:
         raise NotImplementedError('Model [%s] is not implemented' % opt.stage)
 
