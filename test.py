@@ -118,7 +118,7 @@ def main():
         f'{opt.datamode}/cloth-mask',
         f'{opt.datamode}/image',
         f'{opt.datamode}/image-parse-new',
-        'image-mask',
+        f'{opt.datamode}/image-mask',  # Moved under datamode
         f'{opt.datamode}/openpose_json'
     ]
     for d in required_dirs:
