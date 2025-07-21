@@ -30,8 +30,8 @@ class CPDataset(data.Dataset):
         # Define transforms with augmentation, disabled for validation
         if self.datamode == 'train':
             self.transform = transforms.Compose([
-                transforms.RandomHorizontalFlip(),  # Add horizontal flip for diversity
-                transforms.ColorJitter(brightness=0.2, contrast=0.2),  # Add color variation
+                transforms.RandomHorizontalFlip(),
+                transforms.ColorJitter(brightness=0.2, contrast=0.2),
                 transforms.ToTensor(),
                 transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
             ])
@@ -47,6 +47,8 @@ class CPDataset(data.Dataset):
         with open(osp.join(opt.dataroot, self.data_list), 'r') as f:
             for line in f.readlines():
                 im_name, c_name = line.strip().split()
+                # Remove 'train/' prefix from c_name if present
+                c_name = c_name.replace('train/', '')
                 im_names.append(im_name)
                 c_names.append(c_name)
 
@@ -231,7 +233,7 @@ if __name__ == "__main__":
     dataset = CPDataset(opt)
     data_loader = CPDataLoader(opt, dataset)
 
-    print('Size of the dataset: %05d, dataloader: %04d' % (len(dataset), len(data_loader.data_loader)))
+    print('Size of the dataset: %05d, dataloader: %04d' % (len(dataset), len(data_loader)))
     first_item = dataset.__getitem__(0)
     first_batch = data_loader.next_batch()
 
