@@ -460,7 +460,7 @@ class DT(nn.Module):
 
 class DT2(nn.Module):
     def __init__(self):
-        super(DT, self).__init__()
+        super(DT2, self).__init__()
 
     def forward(self, x1, y1, x2, y2):
         dt = torch.sqrt(torch.mul(x1 - x2, x1 - x2) +
@@ -536,6 +536,13 @@ def save_checkpoint(model, save_path):
 
 def load_checkpoint(model, checkpoint_path):
     if not os.path.exists(checkpoint_path):
+        print(f"Checkpoint {checkpoint_path} does not exist!")
         return
-    model.load_state_dict(torch.load(checkpoint_path))
+    checkpoint = torch.load(checkpoint_path)
+    # Filter out unexpected keys and load only matching ones
+    model_dict = model.state_dict()
+    pretrained_dict = {k: v for k, v in checkpoint.items() if k in model_dict and model_dict[k].shape == v.shape}
+    model_dict.update(pretrained_dict)
+    model.load_state_dict(model_dict)
+    print(f"Loaded checkpoint {checkpoint_path} with partial matching (loaded {len(pretrained_dict)} parameters)")
     model.cuda()
