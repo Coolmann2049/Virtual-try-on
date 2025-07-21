@@ -2,9 +2,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import os
 
 import argparse
-import os
 import time
 from cp_dataset import CPDataset, CPDataLoader
 from networks import GMM, UnetGenerator, load_checkpoint
@@ -36,7 +36,6 @@ def get_opt():
                         default='result', help='save result infos')
     parser.add_argument('--checkpoint', type=str, default='checkpoints/GMM/gmm_final.pth', help='model checkpoint for test')
     parser.add_argument('--gmm_checkpoint', type=str, default='checkpoints/GMM/gmm_final.pth', help='GMM model checkpoint for test')
-    parser.add_argument('--cloth_subdir', type=str, default='cloth', help='Subdirectory for cloth images (e.g., cloth or train/cloth)')
 
     parser.add_argument("--display_count", type=int, default=1)
     parser.add_argument("--shuffle", action='store_true',
@@ -104,7 +103,7 @@ def test_gmm(opt, test_loader, model, board):
         save_images(overlay, im_names, overlayed_TPS_dir)
 
         if (step+1) % opt.display_count == 0:
-            board_add_images(board, 'combine', visuals, step+1)
+            board_add_image(board, 'combine', visuals, step+1)
             t = time.time() - iter_start_time
             print('step: %8d, time: %.3f' % (step+1, t), flush=True)
 
@@ -153,8 +152,8 @@ def test_tom(opt, test_loader, model, gmm_model, board):
         original_cm = inputs['cloth_mask'].cuda()
         pcm = inputs['parse_cloth_mask'].cuda()
 
-        # Adjust cloth path if needed based on cloth_subdir
-        adjusted_c_names = [os.path.join(opt.cloth_subdir, c_name.split('/', 1)[1]) if 'train' in c_name else c_name for c_name in inputs['c_name']]
+        # Preprocess cloth names to remove 'train/' prefix if present
+        adjusted_c_names = [c_name.replace('train/', '') if c_name.startswith('train/') else c_name for c_name in inputs['c_name']]
 
         # Warp cloth using GMM
         with torch.no_grad():
@@ -190,8 +189,8 @@ def main():
     print(opt)
     print("Start to test stage: %s, named: %s!" % (opt.stage, opt.name))
 
-    # create dataset with cloth subdirectory option
-    test_dataset = CPDataset(opt, cloth_subdir=opt.cloth_subdir)
+    # create dataset
+    test_dataset = CPDataset(opt)
 
     # create dataloader
     test_loader = CPDataLoader(opt, test_dataset)
