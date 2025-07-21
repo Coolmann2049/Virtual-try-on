@@ -472,22 +472,22 @@ class GicLoss(nn.Module):
     def __init__(self, opt):
         super(GicLoss, self).__init__()
         self.dT = DT()
-        self.opt = opt
+        self.opt = opt  # Store opt as instance variable
 
     def forward(self, grid):
         Gx = grid[:, :, :, 0]
         Gy = grid[:, :, :, 1]
-        Gxcenter = Gx[:, 1:opt.fine_height - 1, 1:opt.fine_width - 1]
-        Gxup = Gx[:, 0:opt.fine_height - 2, 1:opt.fine_width - 1]
-        Gxdown = Gx[:, 2:opt.fine_height, 1:opt.fine_width - 1]
-        Gxleft = Gx[:, 1:opt.fine_height - 1, 0:opt.fine_width - 2]
-        Gxright = Gx[:, 1:opt.fine_height - 1, 2:opt.fine_width]
+        Gxcenter = Gx[:, 1:self.opt.fine_height - 1, 1:self.opt.fine_width - 1]  # Use self.opt
+        Gxup = Gx[:, 0:self.opt.fine_height - 2, 1:self.opt.fine_width - 1]  # Use self.opt
+        Gxdown = Gx[:, 2:self.opt.fine_height, 1:self.opt.fine_width - 1]  # Use self.opt
+        Gxleft = Gx[:, 1:self.opt.fine_height - 1, 0:self.opt.fine_width - 2]  # Use self.opt
+        Gxright = Gx[:, 1:self.opt.fine_height - 1, 2:self.opt.fine_width]  # Use self.opt
 
-        Gycenter = Gy[:, 1:opt.fine_height - 1, 1:opt.fine_width - 1]
-        Gyup = Gy[:, 0:opt.fine_height - 2, 1:opt.fine_width - 1]
-        Gydown = Gy[:, 2:opt.fine_height, 1:opt.fine_width - 1]
-        Gyleft = Gy[:, 1:opt.fine_height - 1, 0:opt.fine_width - 2]
-        Gyright = Gy[:, 1:opt.fine_height - 1, 2:opt.fine_width]
+        Gycenter = Gy[:, 1:self.opt.fine_height - 1, 1:self.opt.fine_width - 1]  # Use self.opt
+        Gyup = Gy[:, 0:self.opt.fine_height - 2, 1:self.opt.fine_width - 1]  # Use self.opt
+        Gydown = Gy[:, 2:self.opt.fine_height, 1:self.opt.fine_width - 1]  # Use self.opt
+        Gyleft = Gy[:, 1:self.opt.fine_height - 1, 0:self.opt.fine_width - 2]  # Use self.opt
+        Gyright = Gy[:, 1:self.opt.fine_height - 1, 2:self.opt.fine_width]  # Use self.opt
 
         dtleft = self.dT(Gxleft, Gxcenter)
         dtright = self.dT(Gxright, Gxcenter)
